@@ -774,6 +774,7 @@ print(f"Accuracy：{accuracy_cnt/len(x)}")
 ### 4.2.1　均方误差（mean squared error）
 #### 表达式
 $$E = \frac{1}{2}\sum_k{(y_k-t_k)}^2$$
+
 其中$y_k$是表示神经网络的输出，$t_k$表示监督数据，$k$表示神经网络的维度。
 >在理论分析时，监督数据$t_k$常常使用***one-hot***的形式表示。
 #### python实现
@@ -799,7 +800,9 @@ def CrossEntropyError(y,t):
 机器学习使用**训练数据**进行学习。使用训练数据进行学习，严格来说，就是针对训练数据**计算损失函数的值**，找出使该值尽可能小的参数。因此，计算损失函数时必须将**所有的训练数据**作为对象。
 
 以交叉熵误差为例，可以写成下面的式：
+
 $$E = -\frac{1}{N}\sum_n\sum_k{t_{nk}logy_{nk}}$$
+
 其中右下角的$nk$表示第$n$个数据的第$k$个元素的值，数据有$N$个。
 >其实只是把求单个数据扩大到了N份数据，
 >最后还要除以$N$进行正规化。
@@ -860,7 +863,10 @@ $$
 $$
 实际上我们不会使用的解析方式求导数，即直接通过导数公式求解导数并且代入；而是运用数值微分（numerical differentiation）的方法，即将$h$设置为一个较小的值，直接计算$$\frac{f(x+h) - f(x)}{h}$$并以此来作为导数值。
 
-考虑到在python中，变量的值无法无限小所以一般选取 ***$h=0.0001$***；而由于$h≠0$，使用更为精确的中心差分计算导数：$$\frac{f(x+h) - f(x-h)}{2h}$$
+考虑到在python中，变量的值无法无限小所以一般选取 ***$h=0.0001$***；而由于$h≠0$，使用更为精确的中心差分计算导数：
+
+$$\frac{f(x+h) - f(x-h)}{2h}$$
+
 其python实现为：
 ```python
 #f即为具体函数
@@ -954,6 +960,7 @@ def grad_descent(f,init_x,lr,step=100):
 >本质上就是输入函数、初始值、学习率、步长；每一次循环计算梯度代入公式计算x。
 ### 4.5.2 神经网络的梯度
 神经网络的学习也要求梯度。这里所说的梯度是指损失函数关于权重参数的梯度。比如，有一个只有一个形状为2×3的权重$\bold{\textit{W}}$的神经网络，损失函数用$L$表示。此时梯度可以用表示:
+
 $$
 W = 
 \begin{pmatrix}
@@ -969,6 +976,7 @@ $$
 \frac{\partial L}{\partial w_{21}} & \frac{\partial L}{\partial w_{22}} & \frac{\partial L}{\partial w_{23}}
 \end{pmatrix}
 $$
+
 上述过程的python实现为：
 ```python
 import sys, os
@@ -976,7 +984,7 @@ sys.path.append(os.pardir)
 import numpy as np
 from common.functions import softmax, cross_entropy_error
 from common.gradient import numerical_gradient#导入函数
-class simpleNet():
+class SimpleNet():
       def __init__(self):#初始化时初始化权重矩阵
           self.W = np.random.randn(2,3)
           #np.random.randn：生成标准正态分布（均值为 0，方差为 1）
@@ -984,9 +992,296 @@ class simpleNet():
       def Predict(self, x):#计算权重和a（暂时不考虑偏置）
           return np.dot(x,self.W) #因为只有输入到输出所以直接返回
       
-      def loss(self, x, t):
+      def Loss(self, x, t):
           z = Predict(x)
           y = softmax(z)#使用softmax求输出
           loss = cross_entropy_error(y,t)#求损失值
           return loss
+
+net = SimpleNet()# 权重参数
+x = np.array([0.6, 0.9])
+p = net.Predict(x)
 ```
+求解$W$的导数为：
+```python
+def f(W):
+    return net.Loss(x, t)
+
+dW = numerical_gradient(f, net.W)
+```
+>为什么f的W参数未使用到？
+>numerical_gradient(f, net.W) 被调用时，它接收两个参数：f：一个函数和net.W：当前的权重数组。
+>在numerical_gradient 内部，会直接修改传入的 net.W 数组（并在每次修改后调用 f计算$f(x+h)$和$f(x-h)$以计算导数组合成梯度。
+>而实际上在上述过程中修改了net.W，当调用f函数时，虽然传入的net.W的没用使用到，但是其会调用Loss方法，（计算交叉指数熵），其内部使用的self.W正是被numerical_gradient函数修改的数组。
+>因此：当 numerical_gradient 改变 net.W 时，net.loss 的结果会自动变化。所以f不需要使用传入的W，也能正确反映损失随权重的变化。
+
+Python中如果定义的是简单的函数，可以使用lambda表示法：
+```python
+f = lambda W : net.Loss(x,t)
+```
+
+注意，之前所写的NumericalGrad函数只能使用在x维度为1时（即x为向量），如果x为多维数组，需要修改，代码如下：
+```python
+def numerical_gradient(f, x):
+    h = 1e-4 # 0.0001
+    grad = np.zeros_like(x)
+    
+    it = np.nditer(x, flags=['multi_index'], op_flags=['readwrite'])
+    #使用multi_index访问全局，使用readwrite赋以读写权限
+    while not it.finished:
+        idx = it.multi_index
+
+        tmp_val = x[idx]
+
+        x[idx] = float(tmp_val) + h
+        #强制为float型，当元素是int型时，加法产生意外的整数截断
+        fxh1 = f(x) # f(x+h)
+        x[idx] = tmp_val - h 
+        #由于上面已经转换过了，所以必定是float型
+        fxh2 = f(x) # f(x-h)
+
+        grad[idx] = (fxh1 - fxh2) / (2*h)
+        
+        x[idx] = tmp_val # 还原值
+
+        it.iternext()   
+        
+    return grad
+```
+np.nditer（N-dimensional iterator）函数可以方便地遍历n维数组，而无需使用for嵌套。返回值为迭代器类型数据。其使用说明如下：
+```python
+numpy.nditer(op, flags=None, op_flags=None, ...)#原型
+'''
+op：要迭代的数组（可以是多个数组，这里只有一个 x）
+flags：控制迭代行为的字符串列表。常用值：
+  'multi_index'：记录当前元素的多维索引（通过 it.multi_index 访问）
+                 x有n维度就会返回一个有n个元素的元组
+  'c_index'：记录C风格的扁平索引。
+  'f_index'：记录Fortran风格的扁平索引。
+op_flags：对操作数（数组）的访问权限的字符串列表。常用值：
+  'readonly'：只读。
+  'readwrite'：可读可写（允许修改原数组元素）
+  'writeonly'：只写。
+'''
+```
+it.finished: 的说明：迭代器的属性，布尔值。当迭代器已经访问完所有元素时，finished 变为 True；否则为 False。while not it.finished:代表只要还有元素未被处理，就继续循环体。
+idx = it.multi_index：以元组形式获取当前迭代器所指元素的多维索引
+it.iternext()：将迭代器移动到下一个元素
+## 4.6 学习算法的实现
+### 4.6.1 神经网络学习的总结
+0. 前提
+神经网络存在合适的权重和偏置，调整权重和偏置以便拟合训练数据的过程称为“学习”。神经网络的学习分成下面4个步骤。
+1. 步骤1（mini-batch）
+从训练数据中随机选出一部分数据，这部分数据称为mini-batch。目标是减小mini-batch的损失函数的值。
+1. 步骤2（计算梯度）
+为了减小mini-batch的损失函数的值，需要求出各个权重参数的梯度。梯度表示损失函数的值减小最多的方向。
+1. 步骤3（更新参数）
+将权重参数沿梯度方向进行微小更新。
+1. 步骤4（重复）
+重复步骤1、步骤2、步骤3。
+
+>因为数据是随机选择的mini-batch数据，所以又称为随机梯度下降法（stochastic gradient descent）。
+>“随机”指的是“随机选择的”.因此，随机梯度下降法是“对随机选择的数据进行的梯度下降法”。
+>深度学习的很多框架中，随机梯度下降法一般由一个名为SGD的函数来实现。SGD来源于随机梯度下降法的英文名称的首字母。
+### 4.6.2 手写数字识别的神经网络
+#### 2层神经网络的类
+将这个2层神经网络实现为一个名为TwoLayerNet的类
+```python
+'''
+功能：进行一次神经网络的计算并且计算损失与梯度
+函数：__init__（初始化权重和偏置）、predict（神经网络计算）、loss（损失计算）、numerical_gradient（梯度计算）
+'''
+import sys, os
+sys.path.append(os.pardir)  
+import numpy as np
+from common.functions import *
+'''
+导入模块中的所有公开名称
+即模块中所有不以单下划线 _ 开头的函数、变量、类等。
+导入后，可以直接使用这些名称，而不需要加模块名前缀。
+'''
+from common.gradient import numerical_gradient
+
+class TwoLayerNet:
+    '''
+    由于只有两层（输入，中间，输出），所以需要3个size（神经元数）
+    输入层神经元数，中间一层隐藏层神经元数，输出层神经元数
+    weight_init_std=0.01 是权重初始化的标准差，保证数据在[-0.3,0.3]
+    '''
+    def __init__(self, input_size, hidden_size, output_size, weight_init_std=0.01):
+        # 初始化权重
+        self.params = {}
+        self.params['W1'] = weight_init_std * np.random.randn(input_size, hidden_size)
+        self.params['b1'] = np.zeros(hidden_size)
+        self.params['W2'] = weight_init_std * np.random.randn(hidden_size, output_size)
+        self.params['b2'] = np.zeros(output_size)
+        '''
+        np.random.randn()可以有n个输入什么，会生成n维数组
+          1.权重是每一行代表前一层一个神经元对后一层所有神经元的权重
+          2.行数是前一层神经元数，列数是后一层神经元数
+        np.zeros()生成同上，但是元素皆是0
+          1.偏置是每一行代表前一层一个神经元对后一层所有神经元的偏置
+          2.由于每一层只有一个偏置，输入一维（长度）即可
+        '''
+
+    def predict(self, x):
+        W1, W2 = self.params['W1'], self.params['W2']
+        b1, b2 = self.params['b1'], self.params['b2']
+    
+        a1 = np.dot(x, W1) + b1
+        z1 = sigmoid(a1)
+        a2 = np.dot(z1, W2) + b2
+        y = softmax(a2)
+      
+        return y
+        
+    # x:输入数据, t:监督数据
+    def loss(self, x, t):
+        y = self.predict(x)
+
+        return cross_entropy_error(y, t)
+    
+    def accuracy(self, x, t):
+        y = self.predict(x)
+        #进行求解，最后每一行都是0~9这十个数字的可能概率
+        y = np.argmax(y, axis=1)
+        t = np.argmax(t, axis=1)
+        #因为这里t也是one-hot类型数据也必须做处理；如果只是普通数据则不需要。
+        
+        accuracy = np.sum(y == t) / float(x.shape[0])
+        #每一行代表一个数据，总个数为行数
+        return accuracy
+        
+    # x:输入数据, t:监督数据
+    def numerical_gradient(self, x, t):
+        loss_W = lambda W: self.loss(x, t)
+        
+        grads = {}
+        grads['W1'] = numerical_gradient(loss_W, self.params['W1'])
+        grads['b1'] = numerical_gradient(loss_W, self.params['b1'])
+        grads['W2'] = numerical_gradient(loss_W, self.params['W2'])
+        grads['b2'] = numerical_gradient(loss_W, self.params['b2'])
+        #梯度求解：封装一下loss方法（交叉指数熵函数）
+        #向求梯度函数输入封装的方法和要求的量
+        return grads
+        
+    def gradient(self, x, t):#另一种计算梯度的方法
+        W1, W2 = self.params['W1'], self.params['W2']
+        b1, b2 = self.params['b1'], self.params['b2']
+        grads = {}
+        
+        batch_num = x.shape[0]
+        
+        # forward
+        a1 = np.dot(x, W1) + b1
+        z1 = sigmoid(a1)
+        a2 = np.dot(z1, W2) + b2
+        y = softmax(a2)
+        
+        # backward
+        dy = (y - t) / batch_num
+        grads['W2'] = np.dot(z1.T, dy)
+        grads['b2'] = np.sum(dy, axis=0)
+        
+        da1 = np.dot(dy, W2.T)
+        dz1 = sigmoid_grad(a1) * da1
+        grads['W1'] = np.dot(x.T, dz1)
+        grads['b1'] = np.sum(dz1, axis=0)
+
+        return grads
+```
+应用：
+```python
+'''
+np.random.rand()是均匀分布函数
+生成指定的形状
+'''
+x = np.random.rand(100, 784) # 伪输入数据（100笔）
+t = np.random.rand(100, 10)  # 伪正确解标签（100笔）
+grads = net.numerical_gradient(x, t)  # 计算梯度
+grads['W1'].shape  # (784, 100)
+grads['b1'].shape  # (100,)
+grads['W2'].shape  # (100, 10)
+grads['b2'].shape  # (10,)
+```
+>input_size=784（输入图像的大小是784=28×28）
+>output_size=10（十个类别）
+>隐藏层的个数hidden_size设置为一个合适的值即可
+>权重使用符合高斯分布的随机数进行初始化，偏置使用0进行初始化
+#### mini-batch的实现
+```python
+import sys, os
+sys.path.append(os.pardir)
+import numpy as np
+import matplotlib.pyplot as plt
+from dataset.mnist import load_mnist
+from two_layer_net import TwoLayerNet
+
+# 读入数据
+(x_train, t_train), (x_test, t_test) = load_mnist(normalize=True, one_hot_label=True)
+#初始化神经网络，给出各层神经元数
+network = TwoLayerNet(input_size=784, hidden_size=50, output_size=10)
+
+# 超参数
+iters_num = 10000  # 适当设定循环的次数
+train_size = x_train.shape[0]#总训练数据
+batch_size = 100#每次batch数
+learning_rate = 0.1#学习率eta
+
+# 存储每个epoch的损失度
+train_loss_list = []
+# 存储每个epoch的精度
+train_acc_list = []
+test_acc_list = []
+# 每个epoch内循环次数，即计算epoch的值——总数/mini-batch数
+iter_per_epoch = max(train_size / batch_size, 1)
+
+for i in range(iters_num):
+    # 抽取mini-batch
+    batch_mask = np.random.choice(train_size, batch_size)
+    x_batch = x_train[batch_mask]
+    t_batch = t_train[batch_mask]
+    
+    # 利用梯度下降法计算
+      # 计算梯度，有两种计算方法
+    #grad = network.numerical_gradient(x_batch, t_batch)
+    grad = network.gradient(x_batch, t_batch)
+  
+      # 更新参数，梯度下降法的公式，每次自减学习率与梯度之积
+    for key in ('W1', 'b1', 'W2', 'b2'):
+        network.params[key] -= learning_rate * grad[key]
+    
+    # 记录下每一次的损失
+    loss = network.loss(x_batch, t_batch)
+    train_loss_list.append(loss)
+    
+    # 计算每个epoch的识别精度，即当i是iter_per_epoch的整数倍
+    if i % iter_per_epoch == 0:
+        # 使用accuracy方法计算并且加到列表中
+        train_acc = network.accuracy(x_train, t_train)
+        test_acc = network.accuracy(x_test, t_test)
+        train_acc_list.append(train_acc)
+        test_acc_list.append(test_acc)
+        
+        print("train acc, test acc | " + str(train_acc) + ", " + str(test_acc))
+
+# 绘制图形
+x = np.arange(len(train_acc_list))
+plt.plot(x, train_acc_list, label='train acc')
+plt.plot(x, test_acc_list, label='test acc', linestyle='--')
+plt.xlabel("epochs")
+plt.ylabel("accuracy")
+plt.ylim(0, 1.0)
+plt.legend(loc='lower right')
+plt.show()
+```
+![效果图](image-15.png)
+神经网络学习的最初目标是掌握泛化能力，因此要评价神经网络的泛
+化能力，就必须使用不包含在训练数据中的数据。
+在进行学习的过程中，会定期地对训练数据和测试数据记录识别精度。每经过一个epoch，我们都会记录下训练数据和测试数据的识别精度。
+epoch是一个单位。一个epoch表示学习中所有训练数据均被使用过一次时的更新次数。
+>比如，对于10000笔训练数据，用大小为100笔数据的mini-batch进行学习时，重复随机梯度下降法100次，所有的训练数据就都被“看过”了。此时，100次就是一个epoch。
+> 实际上，一般做法是事先将所有训练数据随机打乱，然后按指定的批次大小，按序生成mini-batch。这样每个mini-batch均有一个索引号，比如此例可以是0,1,2, ... ,99，然后用索引号可以遍历所有的mini-batch。遍历一次所有数据，就称为一个epoch。
+>请注意，本节中的mini-batch每次都是随机选择的，所以不一定每个数据都会被看到。
+
+![每个epoch](image-16.png)
