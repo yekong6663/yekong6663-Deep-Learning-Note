@@ -557,6 +557,7 @@ code .
 ```
 
 ### 5. 启动 Dev Container
+使用位置：在指定的子工作空间中
 保存文件后，VS Code 右下角会弹出提示：
 > Folder contains a Dev Container configuration file. Reopen folder to develop in a container?
 

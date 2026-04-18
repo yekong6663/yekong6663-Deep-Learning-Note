@@ -515,7 +515,7 @@ ros2 pkg create system_pub --build-type ament_python --dependencies rclpy status
 ```python
 import rclpy
 from rclpy.node import Node
-from status_interfaces.msg import SystemStatus
+from status_interfaces.msg import SystemStatus #调用自建的消息接口
 import psutil
 import platform
 
@@ -556,11 +556,11 @@ ros2 pkg create display_qt --build-type ament_cmake --dependencies rclcpp status
 ```cmake
 find_package(Qt5 REQUIRED COMPONENTS Widgets)
 add_executable(display_node src/display_node.cpp)
-target_link_libraries(display_node Qt5::Widgets)
+target_link_libraries(display_node Qt5::Widgets)#需要单独链接
 ament_target_dependencies(display_node rclcpp status_interfaces)
 ```
 
-#### 主函数示例
+#### 简单Qt实现的主函数示例
 ```cpp
 #include <QApplication>
 #include <QLabel>
@@ -581,8 +581,8 @@ int main(int argc, char * argv[]) {
 #### 类设计
 ```cpp
 #include <rclcpp/rclcpp.hpp>
-#include <status_interfaces/msg/system_status.hpp>
-#include <QLabel>
+#include <status_interfaces/msg/system_status.hpp>//修改为小写蛇形
+#include <QLabel>//调用Label与String
 #include <QString>
 #include <sstream>
 
@@ -626,45 +626,3 @@ int main(int argc, char * argv[]) {
 
 ---
 
-## 3.4 Git 入门
-
-### 3.4.1 全局配置
-```bash
-git config --global user.name "Your Name"
-git config --global user.email "email@example.com"
-git config --global init.defaultBranch master
-git config -l
-```
-
-### 3.4.2 仓库操作
-- 初始化：`git init`
-- 删除仓库：`rm -rf .git`
-
-### 3.4.3 提交代码
-1. 添加到暂存区：
-   ```bash
-   git add <文件/文件夹>
-   ```
-2. 提交到本地仓库：
-   ```bash
-   git commit -m "描述信息"
-   ```
-3. 查看历史：
-   ```bash
-   git log
-   ```
-
-### 3.4.4 忽略文件
-- 创建 `.gitignore` 文件，写入要忽略的文件/文件夹名。
-- 常用规则：
-  ```
-  build/
-  install/
-  log/
-  *.pyc
-  ```
-
-### 3.4.5 使用 VS Code 内置 Git 功能
-- 在源代码管理面板中暂存、提交。
-
----
