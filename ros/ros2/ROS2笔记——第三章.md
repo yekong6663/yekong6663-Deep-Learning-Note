@@ -1,13 +1,3 @@
-好的，已按照您的要求将文档中四级及更深层级的标题数字编号移除，仅保留汉字标题文本。修改后的格式如：
-
-- 原 `3.2.1.1 通过话题发布小说` → 保留 `通过话题发布小说`（无数字）
-- 原 `3.2.1.1.1 问题` → 保留 `问题`
-- 原 `3.2.1.1.2 步骤` → 保留 `步骤`
-
-以下是修改后的完整文档：
-
----
-
 # 3 话题通信与工程实践
 
 ## 3.1 话题通信的基本介绍
@@ -203,6 +193,7 @@ def main():
    ```
 3. **队列**：同上。
 ![alt text](image-5.png)
+>订阅器收到的消息，会作为参数自动传给回调函数；所以说回调函数需要有一个用于接受订阅消息的参数。
 4. **加速朗读**：
    ```python
    import threading
@@ -317,6 +308,61 @@ def main():
    ```
 4. **主函数**：创建节点并 `spin`。
 
+完整代码：
+```python
+import rclpy
+from rclpy.node import Node
+# 导入小海龟位置的Pose类型与控制其位置的Twist类型
+from turtlesim.msg import Pose
+from geometry_msgs.msg import Twist
+import math
+
+class TurtlesimFeedbackControl(Node):
+    def __init__(self,node_name):
+        super().__init__(node_name)
+        # 创建订阅器订阅小海龟位置，创建发布器发布目标速度
+        # 使用ros2 topic list查看话题
+        self.publisher = self.create_publisher(Twist, "/turtle1/cmd_vel", 10)
+        self.subscription = self.create_subscription(Pose, "turtle1/pose", self.feedbackcontrol,10)
+
+        # 目标位置
+        self.target_x = 7.0
+        self.target_y = 7.0
+
+        # 用于PID控制的比例系数与最大速度
+        self.max_linear_speed = 2.0
+        self.max_angular_speed = 5.0
+        self.k = 2.0
+
+    # 订阅器的回调函数，注意一个变量必须是msg用于存放订阅数据
+    def feedbackcontrol(self, msg):
+        # 计算误差
+        ex = self.target_x - msg.x
+        ey = self.target_y - msg.y
+
+        # 将误差转化为距离与角度
+        distance = math.sqrt(ex*ex + ey*ey)
+        theta = math.atan2(ey, ex) - msg.theta
+        # 角度归一化
+        theta = math.atan2(math.sin(theta), math.cos(theta))
+
+        # 乘以比例系数作为PID控制的输出，并且进行限幅
+        vx = min(distance*self.k, self.max_linear_speed)
+        vz = min(theta*self.k, self.max_angular_speed)
+
+        # 创建发布对象进行发布
+        speed = Twist()
+        # 修改linear.x和angular.z即可实现运动
+        speed.linear.x = vx
+        speed.angular.z = vz
+        self.publisher.publish(speed)
+
+def main():
+    rclpy.init()
+    node = TurtlesimFeedbackControl("yozora")
+    rclpy.spin(node)
+    rclpy.shutdown()
+```
 ---
 
 ### 3.2.3 海龟节点——C++ 版本
@@ -433,7 +479,26 @@ private:
 
 ##### CMakeLists.txt
 ```cmake
-ament_target_dependencies(可执行文件名 rclcpp geometry_msgs turtlesim)
+# ========== 1. 查找依赖 ==========
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(turtlesim REQUIRED)
+
+# ========== 2. 创建可执行文件 ==========
+add_executable(turtle_feedback_control src/turtle_feedback_control.cpp)
+
+# ========== 3. 链接依赖库 ==========
+ament_target_dependencies(turtle_feedback_control
+    rclcpp
+    geometry_msgs
+    turtlesim
+)
+
+# ========== 4. 安装可执行文件 ==========
+install(TARGETS turtle_feedback_control
+    DESTINATION lib/${PROJECT_NAME}
+)
 ```
 
 ---
@@ -476,10 +541,10 @@ float32 net_recv
 
 #### CMakeLists.txt 注册
 ```cmake
-\\find两个必须的包
+//find两个必须的包
 find_package(rosidl_default_generators REQUIRED)
 find_package(builtin_interfaces REQUIRED)
-\\使用rosidl
+//使用rosidl
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/SystemStatus.msg" \\主要修改这个就好
   DEPENDENCIES builtin_interfaces
