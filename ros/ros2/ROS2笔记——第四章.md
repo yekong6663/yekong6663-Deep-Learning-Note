@@ -114,7 +114,6 @@ data_files=[
 | **参数** | `img`：图像的 NumPy 数组。<br>`number_of_times_to_upsample`（可选）：图像上采样次数，提高小脸检测精度，默认为 1。<br>`model`（可选）：检测模型，`'hog'`（默认，速度快）或 `'cnn'`（精度高）。 |
 | **返回值** | 列表，每个元素为 `(top, right, bottom, left)` 元组，表示人脸位置。 |
 | **作用** | 检测图像中所有人脸的位置坐标。 |
-| **使用案例** | ```python<br>import face_recognition<br>import cv2<br><br>img = cv2.imread("photo.jpg")<br>locations = face_recognition.face_locations(img)<br>for top, right, bottom, left in locations:<br>    cv2.rectangle(img, (left, top), (right, bottom), (0, 255, 0), 2)<br>cv2.imshow("Result", img)<br>cv2.waitKey(0)<br>``` |
 
 ##### 2. OpenCV (`cv2`) 常用函数
 
