@@ -1306,27 +1306,323 @@ ros2 launch pkg xxx.launch.py 参数名:=新值
 ---
 
 ### 五、关键模板速查
-
-#### Python 参数回调（固定模板）
-
+#### 纯服务
+##### python 
+###### 服务端
 ```python
-def parameter_callback(self, parameters):
-    for param in parameters:
-        if param.name == "参数名":
-            self.变量 = param.value
-    return SetParametersResult(successful=True)
+import rclpy
+from rclpy.node import Node
+
+class ServiceBase(Node):
+    def __init__(self):
+        super().__init__('node_name')
+        #建立服务
+        self.srv = self.create_service(FaceDetect, 'detect_face', self.callback)
+
+    '''
+    有response和request的服务回调函数
+    对传入的response进行读取
+    对request进行赋值最后返回
+    '''
+    def callback(self, request, response):
+        # 读取request，可以加上稳健型判断
+        
+        # 填充响应response并且返回
+
+        # 最后返回
+        return response
+
+def main():
+    rclpy.init()
+    node = FaceDetectService()
+    rclpy.spin(node)
+    rclpy.shutdown()
+
 ```
 
-#### C++ 参数回调（固定模板）
+###### 客户端
+```python
+import rclpy
+from rclpy.node import Node
 
+
+class ClientBase(Node):
+
+    def __init__(self):
+        super().__init__('node_name')
+        #建立客户端
+        self.client = self.create_client(FaceDetect, 'detect_face')
+        
+        #成员函数调用
+        self.send_request()
+
+    def send_request(self):
+
+        #等待服务端响应
+        while not self.client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('Waiting for service...')
+
+        # 构造请求
+        # 创建自定义消息接口.Request()，随后赋值
+        request = your_srv.Request()
+        ...
+
+        # 异步发送，固定格式
+        future = self.client.call_async(request)      # 异步传输消息
+        rclpy.spin_until_future_complete(self, future)# 阻塞当前线程直到future.done()完成
+        response = future.result()#获取结果
+
+
+def main():
+    rclpy.init()
+    node = FaceDetectClient()
+    rclpy.spin_once(node, timeout_sec=1)
+    rclpy.shutdown()
+```
+
+##### C++
+###### 服务端
 ```cpp
-param_cb_handle_ = this->add_on_set_parameters_callback(
-    [this](const std::vector<rclcpp::Parameter>& params) {
+#include <rclcpp/rclcpp.hpp>
+
+class ServerBase : public rclcpp::Node {
+public:
+    TurtleMoveServer() : Node("node_name") {
+        // 创建服务
+
+        service_ = this->create_service<service_type>(
+            "service_name",
+            [this](const your_srv::Request::SharedPtr req,
+                   your_srv::Response::SharedPtr res) {
+                ...
+            });
+
+    }
+
+private:
+    // 智能指针成员变量
+    rclcpp::Service<turtle_move_interface::srv::TurtleMove>::SharedPtr service_;
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr publisher_;
+    rclcpp::Subscription<turtlesim::msg::Pose>::SharedPtr subscription_;
+
+};
+
+int main(int argc, char** argv) {
+    rclcpp::init(argc, argv);
+    auto node = std::make_shared<ServerBase>();
+    rclcpp::spin(node);
+    rclcpp::shutdown();
+    return 0;
+}
+```
+###### 客户端
+```cpp
+#include <rclcpp/rclcpp.hpp>
+#include <chrono>
+
+using namespace std::chrono_literals;
+
+class ClientBase : public rclcpp::Node {
+private:
+    rclcpp::Client<client_type>::SharedPtr client;
+    rclcpp::TimerBase::SharedPtr timer;
+
+public:
+    Client(const std::string &node_name) : rclcpp::Node(node_name) {
+       
+        
+        // 创建客户端
+        client = this->create_client<client_type>("client_name");
+        
+        // 创建定时器，每5秒发送一次请求
+        timer = this->create_wall_timer(
+            5s,
+            std::bind(&Client::send_request, this)
+        );
+    }
+
+    void send_request() {
+        // 等待服务可用，固定格式
+        while (!this->client->wait_for_service(1s)) {
+            RCLCPP_INFO(this->get_logger(), "等待服务...");
+        }
+        
+        if (!rclcpp::ok()) {
+            RCLCPP_INFO(this->get_logger(), "主线程已中断");
+            return;
+        }
+
+        // 创建请求并且赋值
+        auto request = std::make_shared<your_srv::Request>();
+        
+
+        // 异步发送请求，也是固定格式
+        // 调用客户端的async_send_request方法，传入request和一个回调函数（与python相比不同之处，可以直接在回调函数中完成后续处理）
+        this->client->async_send_request(
+            request,
+            [this](rclcpp::Client<client_type>::SharedFuture future) {
+                auto response = future.get();
+            }
+        );
+    }
+};
+
+int main(int argc, char** argv) {
+    rclcpp::init(argc, argv);
+    auto node = std::make_shared<ClientBase>("node_name");
+    rclcpp::spin(node);
+    rclcpp::shutdown();
+    return 0;
+}
+```
+
+#### 服务+参数
+##### python
+###### 服务端参数接受客户端的参数修改请求
+
+```python
+import rclpy
+from rclpy.node import Node
+# 使用参数需要额外导入
+from rclpy.parameter import Parameter
+from rcl_interfaces.msg import SetParametersResult
+
+class BaseService(Node):
+    def __init__(self, node_name):
+        super().__init__(node_name)
+
+        # 创建服务
+        self.service = self.create_service(
+            FaceDetection,
+            "yozora",
+            self.callback
+        )   
+
+        # 重点：声明参数（参数名+值）
+        self.declare_parameter(parameter_name, parameter_value)
+
+        # 利用参数值给成员变量赋值
+        # 推荐参数名和成员变量名一致
+        self.parameter_name = self.get_parameter("parameter_name").value
+
+
+        # 设置参数回调
+        # 在节点运行时，通过外部指令动态修改内部变量的值，无需重启节点。
+        self.add_on_set_parameters_callback(self.parameter_callback)
+
+    def parameter_callback(self, parameters):
+        for param in parameters:
+            if param.name == "参数名":
+                self.变量 = param.value
+        return SetParametersResult(successful=True)
+
+    # 服务端回调函数
+    def callback(self)
+    pass
+
+def main():
+    rclpy.init()
+    node = BaseService("node_name")
+    rclpy.spin(node)
+    rclpy.shutdown()
+```
+
+###### 客户端修改服务端参数
+```python
+import rclpy
+from rclpy.node import Node
+
+from rclpy.parameter import Parameter
+from rcl_interfaces.srv import SetParameters
+from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
+
+
+class BaseClient(Node):
+    def __init__(self, node_name):
+        super().__init__(node_name)
+        self.client = self.create_client(client_type, client_name)
+
+    # 客户端调用函数
+    def send_request(self):
+        pass
+
+    # 创建一个新的客户端，用来修改服务端的参数
+    def new_send_request(self, parameters):
+        # 1. 创建新的客户端，注意客户端名称需要以“/set_parameters”结尾
+        # 类型使用 ros2 interface show ...即可查看
+        update_client = self.create_client(SetParameters, ".../set_parameters")
+
+        #  2. 等待服务响应，固定格式
+        while update_client.wait_for_service(timeout_sec=1) is False:
+            self.get_logger().info("等待服务响应中")
+
+        # 3. 构造request
+        request = SetParameters.Request()
+        request.parameters = parameters
+
+        # 4. 异步请求，固定格式
+        future = update_client.call_async(request)
+        rclpy.spin_until_future_complete(self, future)
+        response = future.result()
+        return response
+
+    # 直接更新参数，其实是构造new_send_request方法的parameters参数并且调用
+    # 根据传入的参数，构造参数对象，调用new_send_request进行更新
+    def update_parameter(self):
+        # 1.创建参数对象
+        # 创建一个参数对象需要对其命名+赋值
+        parameter = Parameter()
+        parameter.name = ...
+
+        # 2. 消息的赋值
+        # 消息接口Parameter下有一个值为ParameterValue，其也是一个消息接口，
+        # 所以需要在创建一个消息接口赋值。
+        # 赋值：对其特定类型的对象进行赋值并且声明其类型
+        parameter_value = ParameterValue()
+        parameter_value.string_value = ...     # 或者是其他类型的值
+        parameter_value.type = ParameterType....
+        parameter.value = parameter_value
+        
+        # 3. 请求更新参数
+        response = self.new_send_request([parameter])
+        # 可选的打印信息
+        for result in response.results:
+            self.get_logger().info(f"参数设置结果: {result.successful}, {result.reason}")
+
+
+def main():
+    rclpy.init()
+    node = BaseClient("face_detection_client")
+    rclpy.spin(node)
+
+    # 先更新参数，再调用客户端的一般请求
+    BaseClient.update_parameter(model = 'hog')
+    BaseClient.send_request()
+    BaseClient.update_parameter(model = 'cnn')
+    BaseClient.send_request()
+
+    rclpy.shutdown()
+
+```
+##### C++
+###### 服务端参数接受客户端的参数修改请求
+```cpp
+parameter_callback_handle_ = this->add_on_set_parameters_callback(
+    [this](const std::vector<rclcpp::Parameter> &parameters) -> rcl_interfaces::msg::SetParametersResult {
         rcl_interfaces::msg::SetParametersResult result;
         result.successful = true;
-        for (const auto& param : params) {
-            if (param.get_name() == "参数名") {
-                成员变量_ = param.as_double();
+
+        // for(parameter:parameters)等价于python的for parameter in parameters
+        for (const auto &parameter : parameters) {
+            RCLCPP_INFO(this->get_logger(), "更新参数: %s = %f", 
+                        parameter.get_name().c_str(), parameter.as_double());
+
+            // 唯一需要修改的地方
+            if (parameter.get_name() == "k") {
+                k_ = parameter.as_double();
+            }
+            if (parameter.get_name() == "max_speed") {
+                max_speed_ = parameter.as_double();
             }
         }
         return result;
@@ -1334,20 +1630,89 @@ param_cb_handle_ = this->add_on_set_parameters_callback(
 );
 ```
 
-#### 同步调用服务（Python 固定格式）
-
-```python
-future = client.call_async(request)
-rclpy.spin_until_future_complete(self, future)
-response = future.result()
-```
-
-#### 同步调用服务（C++ 固定格式）
-
+###### 客户端修改服务端参数
 ```cpp
-auto future = client->async_send_request(request);
-rclcpp::spin_until_future_complete(this->get_node_base_interface(), future);
-auto response = future.get();
-```
+#include <rclcpp/rclcpp.hpp>
+#include <rcl_interfaces/srv/set_parameters.hpp>
+#include <rcl_interfaces/msg/parameter.hpp>
+#include <rcl_interfaces/msg/parameter_value.hpp>
+#include <rcl_interfaces/msg/parameter_type.hpp>
 
----
+class ParameterClient : public rclcpp::Node {
+public:
+    ParameterClient() : Node("parameter_client") {}
+
+    // 发送参数设置请求，这是一个函数
+    rcl_interfaces::srv::SetParameters::Response::SharedPtr
+    new_send_request(const rcl_interfaces::msg::Parameter& param) {
+        
+        // 1. 创建客户端并等待服务上线，注意客户端的名称
+        auto new_client = this->create_client<rcl_interfaces::srv::SetParameters>(".../set_parameters");
+        
+        while (!new_client->wait_for_service(std::chrono::seconds(1))) {
+            RCLCPP_INFO(this->get_logger(), "等待服务...");
+            if (!rclcpp::ok()) {
+                RCLCPP_INFO(this->get_logger(), "主线程已中断");
+                return nullptr;
+            }
+        }
+
+        // 2. 构造请求
+        auto request = std::make_shared<rcl_interfaces::srv::SetParameters::Request>();
+        request->parameters.push_back(param);
+
+        // 异步调用并等待结果
+        // 还可以给async_send_request方法后面加上回调函数
+        auto future = new_client->async_send_request(request);
+        rclcpp::spin_until_future_complete(this->get_node_base_interface(), future);
+        auto response = future.get();
+        return response;
+    }
+
+    // 更新参数（入口函数）
+    void update_param(double k,...) {
+        // 构造参数
+        auto param = rcl_interfaces::msg::Parameter();
+        param.name = ...;
+        
+        auto param_value = rcl_interfaces::msg::ParameterValue();
+        # 填写对应的类型
+        param_value.type = rcl_interfaces::msg::ParameterType::PARAMETER_DOUBLE;
+
+        # 填写对应的值，此处需要修改
+        param_value.double_value = ...;
+
+        param.value = param_value;
+        
+        // 发送请求
+        auto response = new_send_request(param);
+        
+        if (response == nullptr) {
+            RCLCPP_INFO(this->get_logger(), "参数获取失败");
+            return;
+        }
+        
+        // 可选，处理响应结果
+        for (auto result : response->results) {
+            if (result.successful == true) {
+                RCLCPP_INFO(this->get_logger(), "结果: 成功");
+            } else {
+                RCLCPP_INFO(this->get_logger(), "结果: 失败，原因: %s", result.reason.c_str());
+            }
+        }
+    }
+};
+
+int main(int argc, char **argv)
+{
+    rclcpp::init(argc, argv);
+    auto node = std::make_shared<Client>("soyo");
+
+    // 调用参数更新方法修改参数
+    node->update_param(5.0);
+
+    rclcpp::spin(node);
+    rclcpp::shutdown();
+    return 0;
+}
+```
