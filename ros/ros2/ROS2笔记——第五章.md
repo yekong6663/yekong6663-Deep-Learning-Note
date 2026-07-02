@@ -11,7 +11,6 @@
 当 `base_laser` 的角度发生变化时，坐标计算的难度将会变大，此时需要借助 **TF** 进行精确计算。
 
 #### 常用指令
-![alt text](image-11.png)
 ##### 发布静态变换
 
 **基本格式：**
@@ -183,7 +182,7 @@ ros2 pkg create <package_name> --build-type ament_python --dependencies rclpy ge
 | `math` | 角度→弧度转换 |
 
 #### 代码实现
-
+创建静态广播器、赋值、发布
 ```python
 import rclpy
 from rclpy.node import Node
@@ -213,10 +212,11 @@ class StaticTFPublisher(Node):
 
         # 旋转：欧拉角 → 四元数
         q = quaternion_from_euler(
-            math.radians(180.0),
-            math.radians(0.0),
-            math.radians(0.0)
+            math.radians(180.0),   # roll  (绕X轴旋转)
+            math.radians(0.0),     # pitch (绕Y轴旋转)
+            math.radians(0.0)      # yaw   (绕Z轴旋转)
         )
+        
         t.transform.rotation.x = q[0]
         t.transform.rotation.y = q[1]
         t.transform.rotation.z = q[2]
@@ -225,7 +225,20 @@ class StaticTFPublisher(Node):
         # 发布
         self.tf_broadcaster.sendTransform(t)
 ```
-
+注意上述静态广播器的赋值参考：![alt text](image-14.png)
+解读：
+```text
+TFMessage:
+  └── transforms[]:                    # 可以同时包含多个坐标变换
+        └── TransformStamped:           # 一个坐标变换
+              ├── header:               # 元数据
+              │   ├── stamp:            # 时间戳（这个变换是什么时候发生的）
+              │   └── frame_id:         # 父坐标系（从哪出发，如 "world"）
+              ├── child_frame_id:       # 子坐标系（到哪去，如 "base_link"）
+              └── transform:            # 核心数据
+                  ├── translation:      # 位置偏移（x, y, z），单位：米
+                  └── rotation:         # 朝向（四元数 x, y, z, w）
+```
 ### 5.2.2 动态 TF 发布（相机→瓶子）
 
 ```python
@@ -485,10 +498,12 @@ private:
                 "RPY: roll=%.2f, pitch=%.2f, yaw=%.2f",
                 roll, pitch, yaw);
 
-        } catch (const std::exception& e) {
+        } 
+        catch (const std::exception& e) {
             RCLCPP_WARN(this->get_logger(), "TF lookup failed: %s", e.what());
         }
     }
+
 
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
@@ -514,6 +529,15 @@ rqt
 - `rqt_console`：日志查看
 - `rqt_tf_tree`：TF 树可视化
 
+插件下载示例
+
+| 命令 | 作用 | 使用场景 |
+| :--- | :--- | :--- |
+| `sudo apt install ros-$ROS_DISTRO-rqt-tf-tree -y` | 安装 `rqt_tf_tree` 插件 | 想用 `rqt` 图形化查看 TF 树时 |
+| `rm -rf ~/.config/ros.org/rqt_gui.ini` | 删除 `rqt` 的布局配置文件 | `rqt` 启动报错、界面异常、布局混乱时,重新下载插件 |
+
+启动后，在 `rqt` 菜单栏选择：
+**Plugins → Visualization → TF Tree**，就可以图形化查看 TF 树了。
 ### 5.4.2 RViz
 
 ROS 可视化工具，用于三维数据展示。
@@ -523,9 +547,130 @@ ROS 可视化工具，用于三维数据展示。
 rviz2
 ```
 
-**常用显示类型：**
-- TF：显示坐标系
-- RobotModel：机器人模型
-- LaserScan：激光雷达数据
-- Image：图像数据
-- Marker：自定义标记
+**使用**
+1. 添加
+选择`Displays`,点击`add`,即可选择添加方法——通过插件或者话题
+![alt text](image-16.png)
+修改上述`Marker Scale`可以修改显示大小
+2. 修改地图大小
+![alt text](image-17.png)
+在grid下方的修改地图大小与每一个格子的大小
+3. 修改全局坐标系
+![alt text](image-18.png)
+修改`Global Options`下的 `Fixed Frame`可以修改参考坐标系。固定参考系会处于中央。
+4. 保存配置
+File、Save Configure as可以保存当前配置
+
+## 5.5 数据记录工具`ros2 bag`
+### 5.5.1 基本使用
+#### 录制数据 ros2 bag record
+```bash
+# 录制单个指定话题
+ros2 bag record /topic_name
+# 自定义输出包文件夹名称
+ros2 bag record -o custom_bag /topic_name
+# 同时录制多个话题
+ros2 bag record /topic1 /topic2
+# 录制系统全部话题
+ros2 bag record -a
+```
+
+### 5.5.2 查看Bag包信息
+#### 基础查看操作
+```bash
+# 列出当前目录所有rosbag2数据包
+ls ros*
+# 读取包元数据配置文件
+cat rosbag2_xxx/metadata.yaml
+# 查看数据包完整统计信息
+ros2 bag info rosbag2_xxx
+```
+
+### 5.5.3 回放Bag包 ros2 bag play
+#### 回放相关命令
+```bash
+# 基础回放数据包
+ros2 bag play rosbag2_xxx
+# 倍速回放数据包
+ros2 bag play rosbag2_xxx --rate 0.5
+# 循环回放数据包
+ros2 bag play rosbag2_xxx --loop
+# 从指定秒数开始回放
+ros2 bag play rosbag2_xxx --start-offset 3
+```
+
+### 5.5.4 补充通用注意事项
+#### 存储相关说明
+##### 数据包存储结构说明
+ROS2 rosbag2 数据包为文件夹格式，内含 `metadata.yaml` 配置文件与 `.db3` 数据库文件，迁移、拷贝时必须复制完整文件夹，只复制单文件会损坏数据包。
+##### 回放前置通用要求
+回放数据包前需要提前启动对应话题的接收节点，否则无法接收复现的话题数据，看不到运行效果。
+
+### 5.5.4 实操示例：结合小乌龟仿真演示
+#### 前置基础环境命令
+##### 启动乌龟仿真节点（终端1）
+```bash
+ros2 run turtlesim turtlesim_node
+```
+节点名称：`turtlesim_node`，运行后弹出乌龟图形窗口。
+
+##### 启动键盘控制节点（终端2）
+```bash
+ros2 run turtlesim turtle_teleop_key
+```
+节点名称：`turtle_teleop_key`，执行后按上下左右方向键，会持续发布速度话题 `/turtle1/cmd_vel`，作为 `ros2 bag` 的录制数据源。
+
+
+#### 录制话题实操
+```bash
+# 仅录制 /turtle1/cmd_vel 速度话题
+ros2 bag record /turtle1/cmd_vel
+# -o 自定义bag包文件夹名称
+ros2 bag record -o turtle_record /turtle1/cmd_vel
+# 同时录制速度、乌龟位姿两个话题
+ros2 bag record /turtle1/cmd_vel /turtle1/pose
+# -a 录制系统中所有正在发布的话题（包含乌龟全部话题）
+ros2 bag record -a
+```
+执行基础录制命令输出日志：
+```
+[INFO] ... Opened database ...
+[INFO] Listening for topics...
+[INFO] Subscribed to topic '/turtle1/cmd_vel'
+[INFO] Recording...
+```
+按下 `Ctrl + C` 终止录制，自动生成以 `rosbag2_年月日_时分秒` 命名的文件夹包。
+
+#### 查看生成的小乌龟bag包信息
+```bash
+# 查看目录下所有bag包
+ls ros*
+# 读取元数据文件 metadata.yaml
+cat rosbag2_2024_10_01-20_19_32/metadata.yaml
+# 命令行快速解析bag包完整信息（推荐）
+ros2 bag info rosbag2_2024_10_01-20_19_32
+```
+目录结构说明：
+```
+rosbag2_2024_10_01-20_19_32:
+    metadata.yaml        # bag包元数据配置文件
+    rosbag2_2024_10_01-20_19_32_0.db3  # sqlite3 消息存储数据库
+```
+元数据关键配置字段含义：
+- `version: 5`：rosbag2 存储版本
+- `storage_identifier: sqlite3`：底层存储引擎为sqlite3
+输出内容：总录制时长、消息总条数、录制话题列表、各话题消息类型。
+
+#### 回放小乌龟bag包
+```bash
+# 基础回放命令，rosbag2_xxx 为录制生成的完整文件夹名,不是.db文件名
+ros2 bag play rosbag2_2024_10_01-20_19_32
+# --rate 指定回放倍速，0.5慢速回放、2倍快速回放
+ros2 bag play rosbag2_xxx --rate 0.5
+# --loop 开启循环回放模式，乌龟重复走录制轨迹
+ros2 bag play rosbag2_xxx --loop
+# --start-offset 从第3秒位置开始回放录制数据
+ros2 bag play rosbag2_xxx --start-offset 3
+```
+前置要求：必须保持 `turtlesim_node` 乌龟仿真节点运行，回放会自动复现录制时乌龟的运动轨迹。
+
