@@ -1716,3 +1716,160 @@ int main(int argc, char **argv)
     return 0;
 }
 ```
+---
+#### Launch 文件语法速查
+##### 1. 固定框架
+
+```python
+from launch import LaunchDescription
+from launch_ros.actions import Node
+
+def generate_launch_description():
+    return LaunchDescription([
+        # 节点、参数、动作等放在这里
+    ])
+```
+
+**固定规则**：
+- 函数名必须是 `generate_launch_description`
+- 返回值必须是 `LaunchDescription([...])`
+- 返回的是**列表**，可包含多个节点/动作
+- 所有节点/动作按列表顺序**并行启动**（如需顺序执行，用 `TimerAction` 或 `OnProcessExit`）
+
+
+##### 2. 启动节点
+
+```python
+Node(
+    package='包名',
+    executable='可执行文件名',      # 无后缀
+    name='节点名',                 # 可选，重命名节点
+    namespace='命名空间',           # 可选，为节点添加命名空间
+    output='screen',              # 可选：screen / log / both
+    parameters=[...],             # 参数（见第3块）
+    arguments=['--ros-args', '-p', 'param:=value'],  # 命令行参数
+    remappings=[('原话题', '新话题')],  # 话题重映射
+    condition=IfCondition(...),   # 条件执行
+)
+```
+
+
+##### 3. 参数传递（三合一）
+
+| 场景 | 写法 |
+| :--- | :--- |
+| **声明参数**（可在 `ros2 launch` 时传入） | `DeclareLaunchArgument('参数名', default_value='默认值', description='说明')` |
+| ***引用参数值*** | `LaunchConfiguration('参数名')` |
+| **给节点传参（直接值）** | `parameters=[{'use_sim_time': True}]` |
+| **给节点传参（多个参数）** | `parameters=[{'param1': 'value1'}, {'param2': 'value2'}]` |
+| **给节点传参（从 YAML 文件）** | `parameters=['/path/config.yaml']` |
+| **混合传参（文件 + 直接值）** | `parameters=['/path/config.yaml', {'use_sim_time': True}]` |
+| **动态读取文件内容（如 URDF）** | `ParameterValue(Command(['cat ', LaunchConfiguration('model')]), value_type=str)` |
+| **使用 xacro 动态展开** | `ParameterValue(Command(['xacro ', LaunchConfiguration('model')]), value_type=str)` |
+
+**完整示例**：
+```python
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration, Command
+from launch_ros.parameter_descriptions import ParameterValue
+
+# 声明
+model_arg = DeclareLaunchArgument('model', default_value='robot.urdf')
+use_sim_arg = DeclareLaunchArgument('use_sim_time', default_value='false')
+
+# 引用 + 动态读取
+# 实际上是对参数model_arg进行加工后所产生的参数
+robot_description = ParameterValue(
+    Command(['xacro ', LaunchConfiguration('model')]),
+    value_type=str
+)
+
+# 节点使用（混合传参）
+Node(
+    package='robot_state_publisher',
+    executable='robot_state_publisher',
+    parameters=[
+        {'robot_description': robot_description},
+        {'use_sim_time': LaunchConfiguration('use_sim_time')}
+    ]
+)
+```
+
+
+##### 4. 常用动作（五合一）
+
+| 动作 | 作用 | 示例 |
+| :--- | :--- | :--- |
+| **包含其他 launch** | `IncludeLaunchDescription` | 启动 Gazebo、导航等 |
+| **执行系统命令** | `ExecuteProcess` | 执行 `echo`、`ros2 bag`、`xacro` 等 |
+| **延迟执行** | `TimerAction(period=5.0, actions=[...])` | 等待其他节点启动后再执行 |
+| **条件执行** | `condition=IfCondition(LaunchConfiguration('use_gui'))` | 根据参数决定是否启动 |
+| **打印日志** | `LogInfo(msg="启动完成")` | 在终端输出信息 |
+
+**包含其他 launch 的完整写法**：
+```python
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from ament_index_python.packages import get_package_share_directory
+
+include_launch = IncludeLaunchDescription(
+    PythonLaunchDescriptionSource(
+        [get_package_share_directory('gazebo_ros'), '/launch', '/gazebo.launch.py']
+    ),
+    launch_arguments={
+        'world': '/path/to/world.world',
+        'verbose': 'true'
+    }.items()
+)
+```
+
+
+##### 5. 事件驱动（顺序执行）
+
+当需要**按顺序执行**时（如先加载机器人再加载控制器）：
+
+```python
+from launch.actions import RegisterEventHandler, ExecuteProcess
+from launch.event_handlers import OnProcessExit
+
+# 定义要在之后执行的动作
+load_controller = ExecuteProcess(
+    cmd=['ros2', 'control', 'load_controller', 'controller_name'],
+    output='screen'
+)
+
+# 注册事件：当 spawn_entity 退出后，执行 load_controller
+register_event = RegisterEventHandler(
+    event_handler=OnProcessExit(
+        target_action=spawn_entity_node,
+        on_exit=[load_controller]
+    )
+)
+```
+
+
+##### 6. 常用导入汇总
+
+```python
+# 核心
+from launch import LaunchDescription
+from launch.actions import (
+    DeclareLaunchArgument,
+    IncludeLaunchDescription,
+    ExecuteProcess,
+    TimerAction,
+    GroupAction,
+    LogInfo,
+    RegisterEventHandler,
+)
+from launch.event_handlers import OnProcessExit
+from launch.substitutions import LaunchConfiguration, Command, TextSubstitution, PathJoinSubstitution
+from launch.conditions import IfCondition, UnlessCondition
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+
+# ROS 2 专用
+from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
+from ament_index_python.packages import get_package_share_directory
+```
+

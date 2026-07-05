@@ -90,7 +90,7 @@ ros2 pkg create fishbot_description --build-type ament_cmake --license Apache-2.
 **结构可视化**
 在`urdf`文件夹下,输入：
 ```bash
-urdf_to_graphviz.sh 文件名.urdf
+urdf_to_graphviz 文件名.urdf
 ```
 可以生产对应的pdf结构图：![alt text](image-20.png)
 
@@ -115,6 +115,7 @@ rviz2
 此时可以将其修改为`base_link`即可。但是需要注意的是，rviz2不会加载`joint`组件，需要我们自行加载。
 
 **加载`joint`组件**
+但是可以发现，rviz2中不会显示不同link之间的关节，需要我们自行通过ros官方提供的功能包实现。为了便捷地运行上述功能包，我们可以使用launch文件来实现。
 安装
 ```bash
 sudo apt install ros-$ROS_DISTRO-joint-state-publisher
@@ -136,12 +137,6 @@ install(DIRECTORY launch urdf
 ```
 在本功能包下新建`launch`文件夹，在新建`.launch.py`文件
 ```py
-# fish_robot.urdf
-# display_robot.launch.py
-# CMakeLists.txt
-
-# ws > src > fishbot_description > launch > display_robot.launch.py > generate_launch_description
-
 import launch
 import launch_ros
 
@@ -195,6 +190,7 @@ def generate_launch_description():
         package='joint_state_publisher',
         executable='joint_state_publisher'
     )
+    # 其实5、6的功能包的启动的格式较为固定，主要是robot_state_publisher需要传入机器人urdf文件的内容
 
     # ========== 7. 创建 RViz2 节点 ==========
     # 原本 ros2 run rviz2 rviz2可以运行
@@ -218,6 +214,8 @@ ros2 launch fishbot_description display_robot.launch.py
 ```
 即可打开所有节点，传入URDF，运行Rviz2.重新如同之前一样操作（RobotModel、File加载、Global Options）
 也可以保存配置目录（file、save configure as），可以在功能包下新建config文件夹存放，并且修改launch文件
+**注意** 不要忘记在CMakeList文件中添加config文件夹哦
+
 ```python
 
     default_config_path = os.path.join(urdf_package_path, 'config', 对应的配置文件全名)
@@ -231,6 +229,7 @@ ros2 launch fishbot_description display_robot.launch.py
 # arguments与parameter不同，相当于在命令行运行时加上由arguments拼接的参数
 # 即 ros2 run rviz2 rviz2 -d default_config_path
 ```
+
 
 ### 6.2.3 使用Xacro简化URDF
 #### Xacro概述
@@ -326,7 +325,6 @@ Xacro 可以把重复的 URDF 代码打包成“宏”，传不同参数就能�
 
 **作用**：定义全局常量，在宏中引用 `${wheel_radius}`，方便统一修改。
 
----
 
 ##### 常用语法速查表
 
@@ -440,6 +438,96 @@ xacro 文件路径
 ```bash
 ros2 launch fishbot_description display_robot.launch.py model:=xacro文件路径名
 ```
+#### Launch 文件显示 URDF 模型 —— RViz 配置与保存
+
+##### 1. RViz 配置步骤
+
+启动 Launch 文件后，终端可能出现 TF 相关错误，需要在 RViz 中手动配置：
+
+**配置 RobotModel 插件：**
+
+| 配置项 | 设置值 |
+| :--- | :--- |
+| **Fixed Frame** | `base_link`（Global Options 中修改） |
+| **Description Source** | `Topic`（RobotModel 面板中修改） |
+| **Description Topic** | `/robot_description` |
+
+**操作步骤：**
+1. 在 RViz 左侧 **Displays** 面板中展开 **Global Options**
+2. 将 **Fixed Frame** 修改为 `base_link`
+3. 点击左下角 **Add** 添加 **RobotModel** 插件
+4. 在 RobotModel 面板中，将 **Description Source** 改为 `Topic`
+5. 选择 **Description Topic** 为 `/robot_description`
+
+如果一切正常，RViz 中应该显示机器人模型。
+
+
+##### 2. 节点关系图
+
+打开 `rqt`，选择 **Plugins → Introspection → Node Graph**，取消对 `tf` 的隐藏后刷新，可以看到节点通信关系：
+
+```
+robot_state_publisher  →  /robot_description  （发布 URDF 内容）
+                       →  /tf                 （发布 TF 变换）
+                       →  /tf_state           （发布 TF 状态）
+```
+
+
+##### 3. 关节类型与 TF 发布方式
+
+| 关节类型 | 发布方式 | 说明 |
+| :--- | :--- | :--- |
+| **fixed（固定关节）** | 静态广播 | 由 `robot_state_publisher` 直接发布，不依赖 `/joint_states` |
+| **非固定关节**（revolute/continuous/prismatic） | 动态 TF | 需要先订阅 `/joint_states` 获取关节状态，再计算并发布 TF |
+
+`joint_state_publisher` 负责发布 `/joint_states` 话题，供 `robot_state_publisher` 订阅使用。
+
+
+##### 4. 保存 RViz 配置文件
+
+为了避免每次启动时手动添加组件，可以将当前 RViz 配置保存为 `.rviz` 文件：
+
+1. RViz 菜单栏选择 **File → Save Config As**
+2. 保存到功能包目录下，如：
+   ```
+   fishbot_description/config/rviz/display_model.rviz
+   ```
+   或对于你的 `simulation` 包：
+   ```
+   simulation/config/rviz2_config.rviz
+   ```
+
+
+##### 5. 在 Launch 文件中加载配置
+
+修改 Launch 文件，让 `rviz2` 启动时自动加载配置文件：
+
+```python
+from ament_index_python.packages import get_package_share_directory
+import os
+
+default_package_path = get_package_share_directory('simulation')
+rviz_config_path = os.path.join(default_package_path, 'config', 'rviz2_config.rviz')
+
+rviz2 = Node(
+    package='rviz2',
+    executable='rviz2',
+    output='screen',
+    arguments=['-d', rviz_config_path]
+)
+```
+注意，前面的urdf中也可以这样操作。即在rviz2中选择使用话题topic来描述，加载`/robot_description`话题来描述。
+
+##### 6. 总结
+
+| 步骤 | 操作 |
+| :--- | :--- |
+| 1 | 启动 Launch 文件，打开 RViz |
+| 2 | 设置 **Fixed Frame** 为 `base_link` |
+| 3 | 添加 **RobotModel** 插件，设置 **Description Source** 为 `Topic` |
+| 4 | 在 `rqt` 中查看节点关系图，验证通信 |
+| 5 | 保存 RViz 配置文件到功能包 `config/` 目录 |
+| 6 | 修改 Launch 文件，添加 `arguments=['-d', 配置文件路径]` 自动加载 |
 
 ### 6.2.4 创建机器人及传感器部件
 #### 传感器部件
@@ -624,11 +712,13 @@ ros2 launch fishbot_description display_robot.launch.py model:=xacro文件路径
 ```bash
 ros2 launch fishbot_description display_robot.launch.py model:=/home/fishros/chapt6/chapt6_ws/install/fishbot_description/share/fishbot_description/urdf/fishbot/fishbot.urdf.xacro
 ```
+![alt text](image-28.png)
 
 ### 6.2.5 完善机器人执行器部件
 #### 执行器
 在`urdf/fishbot`文件下新建`actuator`文件夹，在其中新建文件`wheel.xacro`和`caster.xacro`
 ##### fishbot/actuator/wheel.urdf.xacro
+一般而言，轮子是圆柱；其本身沿着x轴旋转 $90\degree$ 到y轴，其连接杆也就是y轴。
 ```xml
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
@@ -698,12 +788,10 @@ ros2 launch fishbot_description display_robot.launch.py model:=/home/fishros/cha
     
     <!-- ========== 1. 包含宏文件 ========== -->
     <!-- 基础部件（身体） -->
-    <xacro:include filename="$(find fishbot_description)/urdf/fishbot/base.urdf.xacro" />
+    ...
     
     <!-- 传感器 -->
-    <xacro:include filename="$(find fishbot_description)/urdf/fishbot/sensor/imu.urdf.xacro" />
-    <xacro:include filename="$(find fishbot_description)/urdf/fishbot/sensor/laser.urdf.xacro" />
-    <xacro:include filename="$(find fishbot_description)/urdf/fishbot/sensor/camera.urdf.xacro" />
+    ...
     
     <!-- 执行器 -->
     <xacro:include filename="$(find fishbot_description)/urdf/fishbot/actuator/wheel.urdf.xacro" />
@@ -712,12 +800,10 @@ ros2 launch fishbot_description display_robot.launch.py model:=/home/fishros/cha
 
     <!-- ========== 2. 调用宏生成各部件 ========== -->
     <!-- 机器人身体 -->
-    <xacro:base_xacro length="0.12" radius="0.1" />
+    ...
     
     <!-- 传感器 -->
-    <xacro:imu_xacro xyz="0 0 0.02" />
-    <xacro:laser_xacro xyz="0 0 0.10" />
-    <xacro:camera_xacro xyz="0.10 0 0.075" />
+    ...
     
     <!-- 执行器（主动轮 + 万向轮） -->
     <!-- 左轮：车身左侧 0.10m，下方 0.06m -->
@@ -733,6 +819,7 @@ ros2 launch fishbot_description display_robot.launch.py model:=/home/fishros/cha
 
 </robot>
 ```
+![alt text](image-29.png)
 ### 6.2.6 贴合地面，添加虚拟部件
 
 在仿真环境中，为了让机器人的轮子刚好贴合地面，同时为后续物理引擎提供一个准确的基准点，我们需要引入一个**虚拟部件（Virtual Link）**——`base_footprint`。
@@ -768,17 +855,7 @@ ros2 launch fishbot_description display_robot.launch.py model:=/home/fishros/cha
         </joint>
 
         <!-- 3. 原有的 base_link 定义 -->
-        <link name="base_link">
-            <visual>
-                <origin xyz="0 0 0.0" rpy="0 0 0" />
-                <geometry>
-                    <cylinder length="${length}" radius="${radius}" />
-                </geometry>
-                <material name="white">
-                    <color rgba="1.0 1.0 1.0 0.5" />
-                </material>
-            </visual>
-        </link>
+        ...
         
     </xacro:macro>
 </robot>
@@ -793,6 +870,7 @@ ros2 launch fishbot_description display_robot.launch.py model:=/home/fishros/cha
 - 轮子不再陷入地面，而是刚好贴合地面。
 - 机器人的移动和旋转将以 `base_footprint` 为基准，符合真实机器人的运动学特性。
 
+![alt text](image-30.png)
 ## 6.3 添加物理属性让机器人更真实
 ### 6.3.1 为机器人部件添加碰撞属性
 在 Gazebo 等物理仿真环境中，机器人需要与其他物体（如地面、障碍物）发生接触和碰撞。为了让物理引擎能够正确计算碰撞响应，必须在 URDF 中为每个部件**添加碰撞属性**。
@@ -957,32 +1035,15 @@ I_{xz} & I_{yz} & I_{zz}
         <link name="base_footprint" />
         
         <!-- base_joint 固定关节 -->
-        <joint name="base_joint" type="fixed">
-            <parent link="base_footprint" />
-            <child link="base_link" />
-            <origin xyz="0.0 0.0 ${length/2.0 + 0.032 - 0.001}" rpy="0 0 0" />
-        </joint>
+        ...
 
         <!-- base_link 主体 -->
         <link name="base_link">
             <!-- 可视化外观 -->
-            <visual>
-                <origin xyz="0 0 0.0" rpy="0 0 0" />
-                <geometry>
-                    <cylinder length="${length}" radius="${radius}" />
-                </geometry>
-                <material name="white">
-                    <color rgba="1.0 1.0 1.0 0.5" />
-                </material>
-            </visual>
+            ...
             
             <!-- 碰撞属性 -->
-            <collision>
-                <origin xyz="0 0 0.0" rpy="0 0 0" />
-                <geometry>
-                    <cylinder length="${length}" radius="${radius}" />
-                </geometry>
-            </collision>
+            ...
 
             <!-- ✅ 添加质量与惯性（圆柱体惯性宏） -->
             <!-- 质量设为 1.0 kg，半径和高度由宏参数传入 -->
@@ -1018,8 +1079,25 @@ I_{xz} & I_{yz} & I_{zz}
     <xacro:sphere_inertia m="0.015" r="0.016" />
 </link>
 ```
+**相机（camera.urdf.xacro）**：
+```xml
+<link name="camera_link">
+    <!-- visual、collision 保持不变 -->
+    <xacro:box_inertia m="0.1" w="0.02" h="0.10" d="0.02"/>
+</link>
+```
+**雷达（laser.urdf.xacro）**：
+```xml
+<link name="laser_cylinder_link">
+    <!-- visual、collision 保持不变 -->
+    <xacro:cylinder_inertia m="0.05" r="0.01" h="0.10"/>
+</link>
+<link name="lase_link">
+    <!-- visual、collision 保持不变 -->
+    <xacro:cylinder_inertia m="0.10" r="0.02" h="0.02"/>
+</link>
+```
 
----
 
 #### 在 RViz 中查看质量和惯性
 
@@ -1032,8 +1110,8 @@ I_{xz} & I_{yz} & I_{zz}
 
 2. 在 RViz 的 **RobotModel** 配置面板中：
    - 取消勾选 `Visual Enabled`，隐藏外观
-   - 勾选 `Mass Properties` → 显示质量分布![alt text](image-23.png)
-   - 勾选 `Inertia` → 显示惯性张量![alt text](image-24.png)
+   - 勾选 `Mass Properties` → 显示质量分布![alt text](image-23.png)![alt text](image-31.png)
+   - 勾选 `Inertia` → 显示惯性张量![alt text](image-24.png)![alt text](image-32.png)
 
 3. 将鼠标悬停在部件上，可以查看具体数值。
 
@@ -1093,7 +1171,7 @@ gazebo
 ```bash
 gazebo src/fishbot_description/world/custom_room.world
 ```
-
+>在`model editor`界面保存只能保存相应的模型x需要退出`model editor`才能保存且完整命名后缀名才能保存`.world`文件。
 ### SDF 文件格式简介
 
 Gazebo 使用的模型描述格式为 **SDF（Simulation Description Format）**，它与 URDF 结构相似，但功能更丰富（支持光源、物理参数、传感器等）。
@@ -1185,7 +1263,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             [get_package_share_directory('gazebo_ros'), '/launch', '/gazebo.launch.py']
         ),
-        launch_arguments=[('world', "default_world_path"),('verbose','true')]
+        launch_arguments=[('world', default_world_path),('verbose','true')]
     )
 
     # 请求 Gazebo 加载机器人（从 /robot_description 话题获取 URDF）
@@ -1241,7 +1319,7 @@ ros2 launch fishbot_description gazebo_sim.launch.py
 
 #### 修改传感器颜色
 
-在 `laser.urdf.xacro` 宏定义中添加 `<gazebo>` 标签，将雷达部件颜色修改为黑色：
+在 `laser.urdf.xacro` 宏定义中添加 `<gazebo>` 标签（**与`<link>`标签同一级**），将雷达部件颜色修改为黑色：
 
 ```xml
 <xacro:macro name="laser_xacro" params="xyz">
@@ -1425,7 +1503,6 @@ ros2 launch fishbot_description gazebo_sim.launch.py
 | `odometry_frame` | 里程计坐标系名称（通常为 `odom`） |
 | `robot_base_frame` | 机器人基座坐标系（通常为 `base_footprint` 或 `base_link`） |
 
----
 
 #### 在主文件中调用插件
 
@@ -1530,6 +1607,54 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 | 4 | 使用 `teleop_twist_keyboard` 发送速度指令控制机器人运动 |
 | 5 | 在 RViz 中显示里程计和运动轨迹 |
 
+#### 键盘无法控制 Gazebo 机器人的原因总结
+
+一共发现并修复了 4 个问题：
+
+##### 问题 1：车轮关节类型错误 `fixed` → `continuous`
+
+**文件**：`wheel.xacro:30`
+
+```xml
+<!-- 错误 -->
+<joint name="${wheel_name}_wheel_joint" type="fixed">
+<!-- 正确 -->
+<joint name="${wheel_name}_wheel_joint" type="continuous">
+```
+
+`fixed` 关节是刚性固定的，无法旋转。差速驱动插件只能控制 `continuous`（连续旋转）类型的关节。这是最关键的 bug。
+
+
+##### 问题 2：车轮旋转轴方向错误
+
+**文件**：`wheel.xacro:34`
+
+```xml
+<!-- 错误：使用了位移量 (0 0.10 -0.06) 作为旋转轴 -->
+<axis xyz="${xyz}" />
+<!-- 正确：纯 Y 轴方向 -->
+<axis xyz="0 1 0" />
+```
+
+`${xyz}` 包含 Z 方向偏移 `-0.06`，导致旋转轴不沿纯 Y 方向，车轮无法正确绕轴转动。
+
+##### 问题 3：世界文件嵌入了旧的“压扁”模型
+
+**文件**：`yozora_world.world`
+
+这是从之前 `fixed` 关节运行时保存的快照。Gazebo 的 URDF→SDF 转换器会将所有 `fixed` 关节的子链接“压扁”（lump）到父链接中，导致：
+
+- `left_wheel_joint` 和 `right_wheel_joint` 根本不存在于 SDF 中
+- 差速插件报错：`Joint [left_wheel_joint] not found`
+- `spawn_entity` 报错：`Entity already exists`（世界文件里已经有一个同名模型）
+
+**修复**：删除了世界文件中嵌入的旧 `<model name='yozora_robot'>` 和 `<state>` 状态快照。
+
+##### 问题4：关于端口占用的问题
+![alt text](image-33.png)
+只需要在终端的端口选项处手动删除即可
+
+
 ### 6.4.5 激光雷达传感器仿真
 
 激光雷达（Lidar）是一种通过发射激光束测量距离的传感器，能够提供机器人周围环境的精确距离信息。在 Gazebo 中，可以通过 `libgazebo_ros_ray_sensor.so` 插件方便地实现激光雷达仿真。
@@ -1603,7 +1728,6 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 </robot>
 ```
 
----
 
 #### 传感器标签参数说明
 
@@ -1649,7 +1773,6 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 </robot>
 ```
 
----
 
 #### 在 RViz 中显示激光雷达数据
 
@@ -1668,7 +1791,7 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 4. 调整显示参数：
    - 在左侧 Display 面板中，将 **Size(m)** 从默认的 `0.01` 修改为 `0.1`，使点云更清晰可见
 
-此时即可在 RViz 中看到激光雷达扫描的点云数据（如图 6-37 所示）。
+此时即可在 RViz 中看到激光雷达扫描的点云数据。
 
 #### 总结
 
@@ -1772,7 +1895,7 @@ IMU（Inertial Measurement Unit）是一种集成了多个惯性传感器的设�
 
 #### 在主文件中调用 IMU 插件
 
-修改 `fishbot.urdf.xacro`，确保已包含并调用传感器插件宏：
+修改 `fishbot.urdf.xacro`（实际上无需修改），确保已包含并调用传感器插件宏：
 
 ```xml
 <!-- 导入传感器插件 -->
@@ -1848,7 +1971,6 @@ linear_acceleration:
 
 深度相机可以同时获取彩色图像和深度信息，结合两者可以得到物体的三维坐标，便于机器人进行目标识别与定位操作。Gazebo 中通过 `libgazebo_ros_camera.so` 插件实现深度相机仿真。
 
----
 
 #### 添加相机坐标系矫正虚拟部件
 
@@ -1931,7 +2053,7 @@ linear_acceleration:
 1. 启动 rqt：`rqt`
 2. 选择 **Plugins** → **Visualization** → **Image View**
 3. 在左上角话题选择下拉框中，选择 `/camera_sensor/image_raw` 或 `/camera_sensor/depth/image_raw`
-4. 即可分别查看彩色图像和深度图像（如图 6-39 所示）
+4. 即可分别查看彩色图像和深度图像
 
 
 
