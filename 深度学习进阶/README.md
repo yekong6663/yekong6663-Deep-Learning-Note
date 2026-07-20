@@ -114,3 +114,5 @@ python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_
 | `chapter_natural-language-processing-applications` | 第15章 | NLP应用 |
 | `chapter_references` | 参考文献 | 引用文献 |
 | `chapter_appendix-tools-for-deep-learning` | 附录 | 深度学习工具 |
+
+每一章节文件下都有`index`文件，便是本章节的目录。
