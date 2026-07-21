@@ -64,7 +64,7 @@ bash .devcontainer/download_d2l_notebooks.sh
 ```bash
 jupyter notebook
 ```
-运行后中断会出现类似的链接：
+运行后终端会出现类似的链接：
 ```bash
 http://localhost:8888/?token=...
 # 或
@@ -73,6 +73,8 @@ http://127.0.0.1:8888/?token=...
 点击进入即可
 
 当然也可以点击`d2l-zh/pytorch`的教材进入观看即可。
+
+**代码运行**：在运行jupter笔记本中的代码时，需要从头到尾将代码运行一遍，否则后面的代码可能会由于缺少模块的倒入而失效。
 
 ## 使用 NVIDIA GPU（可选）
 
