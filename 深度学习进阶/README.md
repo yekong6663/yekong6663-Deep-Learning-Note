@@ -51,20 +51,6 @@ python .devcontainer/verify_environment.py
 python -c "from d2l import torch as d2l; import torch; print(torch.__version__, torch.cuda.device_count())"
 ```
 
-启动经典 Notebook：
-
-```bash
-jupyter notebook
-```
-运行后中断会出现类似：
-```bash
- http://localhost:8888/?token=...
-# 或
-http://127.0.0.1:8888/?token=...
-```
-的链接，点击进入即可
-
-当然也可以点击`d2l-zh/pytorch`的教材进入观看即可。
 
 ## 教材 Notebook
 
@@ -73,8 +59,22 @@ http://127.0.0.1:8888/?token=...
 ```bash
 bash .devcontainer/download_d2l_notebooks.sh
 ```
+启动经典 Notebook：
 
-不要使用 `d2l-zh/mxnet` 中的 Notebook 配合当前环境；这个容器安装的是 PyTorch，而不是 MXNet。
+```bash
+jupyter notebook
+```
+运行后终端会出现类似的链接：
+```bash
+http://localhost:8888/?token=...
+# 或
+http://127.0.0.1:8888/?token=...
+```
+点击进入即可
+
+当然也可以点击`d2l-zh/pytorch`的教材进入观看即可。
+
+**代码运行**：在运行jupter笔记本中的代码时，需要从头到尾将代码运行一遍，否则后面的代码可能会由于缺少模块的倒入而失效。
 
 ## 使用 NVIDIA GPU（可选）
 
@@ -92,8 +92,29 @@ python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_
 
 如果只是学习前几章，CPU 环境已经足够；卷积网络等训练任务再启用 GPU 更合适。
 
-## 文件和数据
 
-- 当前打开的 `深度学习进阶` 目录会显式绑定挂载到容器的 `/workspaces/deep-learning-book`，Notebook 和代码会直接保存在 Windows 原目录中。
-- 下载的数据缓存在工作区的 `data` 目录中；重建容器不会重复下载，并且可以直接在 Windows 中查看或备份。
-- 共享内存设为 8 GB，避免多进程数据加载时常见的共享内存不足问题。
+## 教材结构
+| 文件夹名 | 对应章节 | 内容主题 |
+|---------|---------|---------|
+| `chapter_introduction` | 第1章 | 引言 |
+| `chapter_preface` | 前言 | 前言 |
+| `chapter_installation` | 安装 | 环境配置 |
+| `chapter_notation` | 符号 | 数学符号 |
+| `chapter_preliminaries` | 第2章 | 预备知识（NumPy、PyTorch基础） |
+| `chapter_linear-networks` | 第3章 | 线性神经网络 |
+| `chapter_multilayer-perceptrons` | 第4章 | 多层感知机 |
+| `chapter_deep-learning-computation` | 第5章 | 深度学习计算 |
+| `chapter_convolutional-neural-networks` | 第6章 | 卷积神经网络基础 |
+| `chapter_convolutional-modern` | 第7章 | 现代卷积神经网络 |
+| `chapter_recurrent-neural-networks` | 第8章 | 循环神经网络基础 |
+| `chapter_recurrent-modern` | 第9章 | 现代循环神经网络 |
+| `chapter_attention-mechanisms` | 第10章 | 注意力机制与Transformer |
+| `chapter_optimization` | 第11章 | 优化算法 |
+| `chapter_computational-perform` | 第12章 | 计算性能 |
+| `chapter_computer-vision` | 第13章 | 计算机视觉 |
+| `chapter_natural-language-processing-pretraining` | 第14章 | NLP预训练 |
+| `chapter_natural-language-processing-applications` | 第15章 | NLP应用 |
+| `chapter_references` | 参考文献 | 引用文献 |
+| `chapter_appendix-tools-for-deep-learning` | 附录 | 深度学习工具 |
+
+每一章节文件下都有`index`文件，便是本章节的目录。
