@@ -1,19 +1,24 @@
 name: d2l
+
 channels:
+  - pytorch
+  - conda-forge
   - defaults
+
 dependencies:
   - python=3.9
   - pip
+
+  # PyTorch 1.12 官方 conda 包
+  - pytorch=1.12.0
+  - torchvision=0.13.0
+  - cudatoolkit
+
   - pip:
-      # 教材“安装”一节指定的 PyTorch 与 d2l 版本。
-      - torch==1.12.0
-      - torchvision==0.13.0
       - d2l==0.17.6
       - jupyter==1.0.0
       - notebook==6.4.12
       - ipykernel==6.15.2
-      # Notebook 6.4.12 与 Traitlets 5.14+ 的 warn() API 不兼容。
       - traitlets==5.9.0
       - ipython==8.12.2
-      # d2l 0.17.6 固定的 Matplotlib 3.5.1 不兼容 matplotlib-inline 0.2.x。
       - matplotlib-inline==0.1.7

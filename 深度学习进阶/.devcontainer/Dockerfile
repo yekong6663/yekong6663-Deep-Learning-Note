@@ -22,10 +22,25 @@ RUN for attempt in 1 2 3 4; do \
         unzip \
     && rm -rf /var/lib/apt/lists/*
 
+
+# ===============================
+# Configure conda and pip mirrors
+# ===============================
+
+RUN conda config --system --remove-key channels || true \
+    && conda config --system --add channels defaults \
+    && conda config --system --add channels conda-forge \
+    && conda config --system --add default_channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main \
+    && conda config --system --add default_channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/r \
+    && conda config --system --set show_channel_urls yes \
+    && conda config --system --set custom_channels.conda-forge https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud \
+    && pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+
+
 COPY .devcontainer/environment.yml /tmp/environment.yml
 
-# PyTorch 1.12 wheels mark some ELF libraries as requiring an executable stack.
-# Current Docker Desktop/WSL runtimes can reject that flag, so clear it after install.
+
+# Create d2l environment
 RUN conda env create --file /tmp/environment.yml \
     && conda run --no-capture-output --name d2l python -m ipykernel install \
         --sys-prefix \
@@ -49,6 +64,7 @@ RUN conda env create --file /tmp/environment.yml \
             'fi' \
             >> /etc/zsh/zshrc; \
     fi
+
 
 ENV PATH=/opt/conda/envs/d2l/bin:/opt/conda/bin:${PATH} \
     CONDA_DEFAULT_ENV=d2l
