@@ -6,7 +6,7 @@
 
 ## 用 VS Code 启动
 
-1. 安装并启动 Docker Desktop。
+1. 安装并启动 Docker Desktop。（请在主机中配置好代理哦）
 2. 在 VS Code 中安装 **Dev Containers** 扩展。
 3. 用 VS Code 单独打开本目录 `深度学习进阶`，而不是仓库的上一级目录。
 4. 按 `Ctrl+Shift+P`，运行 **Dev Containers: Reopen in Container**。
