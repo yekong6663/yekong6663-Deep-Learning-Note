@@ -1,0 +1,24 @@
+name: d2l
+
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.9
+  - pip
+
+  # PyTorch 1.12 官方 conda 包
+  - pytorch=1.12.0
+  - torchvision=0.13.0
+  - cudatoolkit
+
+  - pip:
+      - d2l==0.17.6
+      - jupyter==1.0.0
+      - notebook==6.4.12
+      - ipykernel==6.15.2
+      - traitlets==5.9.0
+      - ipython==8.12.2
+      - matplotlib-inline==0.1.7
